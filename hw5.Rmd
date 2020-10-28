@@ -1,0 +1,239 @@
+---
+title: "hw5"
+author: "Qianhui Yang"
+date: "10/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Q1
+The accuracy is 0.918, is much better than the last homework GBM result which is only about 0.5
+
+```{r Q1}
+
+library(tidyverse)
+library(dplyr)
+library(gbm)
+
+urlfile<-'https://raw.githubusercontent.com/Vincent-Toups/bios611-project1/master/source_data/datasets_26073_33239_weight-height.csv'
+gender_classification<-read.csv(urlfile)
+
+gender_classification$Gender<-as.factor(gender_classification$Gender)
+gender_classification$Gender_factor[gender_classification$Gender=="Male"]=0
+gender_classification$Gender_factor[gender_classification$Gender=="Female"]=1
+
+model_split <- function(dfi, train_p, validate_p, test_p, col_name="exp_group"){
+  dfi <- sample_n(dfi, nrow(dfi),replace=FALSE);
+  p <- (seq(nrow(dfi))-1)/nrow(dfi);
+  train_dfi <- dfi %>% filter(p < train_p);
+  validate_dfi <- dfi %>% filter(p < train_p + validate_p & p >= train_p);
+  test_dfi <- dfi %>% filter(p >= train_p + validate_p);
+  train_dfi[[col_name]] <- "train";
+  validate_dfi[[col_name]] <- "validate";
+  test_dfi[[col_name]] <- "test";
+  rbind(train_dfi, validate_dfi, test_dfi);
+}
+
+gender_classification<- rbind(model_split(gender_classification %>% filter(Gender=='Male'), 1/3, 1/3, 1/3),
+                              model_split(gender_classification %>% filter(Gender=='Female'), 1/3, 1/3, 1/3));
+gender_classification%>% group_by(Gender, exp_group) %>% tally()
+
+train <- gender_classification %>% filter(exp_group=="train");
+validate <- gender_classification %>% filter(exp_group=="validate");
+test <- gender_classification %>% filter(exp_group=="test");
+
+train$Gender_factor[train$Gender=="Male"]=0
+train$Gender_factor[train$Gender=="Female"]=1
+gbm <- gbm(Gender_factor~Height+Weight, distribution="bernoulli",
+           data=train,
+           n.trees = 100,
+           interaction.depth = 2,
+           shrinkage = 0.1);
+pred_bgm <- predict(gbm, newdata=validate, type="response");
+pred_gbm<-as.data.frame(pred_bgm)
+accuracy_gbm<-sum((pred_bgm>0.5) == validate$Gender_factor)/nrow(validate);
+accuracy_gbm
+```
+
+## Q2
+1. there are some missing data represented by power=0 and total=5, which are omitted, the omitted data has 434 rows of observations.
+2. we need two components to get 85% of variation in the data set
+3. Yes. Because the Durability has a range between 0-120, while the rest of the variables have 0-100.
+The normalization will make sure that each variable weight the same
+4. Yes, the "total" column really is the total as the values in the other columns
+5. If we include the total column in the PCA, the largest principle components PC1 has Total column correspond the largest proportion (0.52)
+6.
+```{r Q2, echo=FALSE}
+urlfile2<-'https://raw.githubusercontent.com/Vincent-Toups/bios611-project1/master/source_data/datasets_38396_60978_charcters_stats.csv'
+superhero<-read.csv(urlfile2)
+# 1 omit the missing data
+library(stringr)
+superhero<-superhero%>%
+          na.omit()%>% 
+          filter(!superhero$Total==5)
+#2 we need two components to get 85% of the variation in the dataset
+superhero_num<-superhero[c(3,4,5,6,7,8)]
+pcs<-prcomp(superhero_num)
+summary(pcs)
+
+#3 Normalization? yes
+pcs_norm<-prcomp(superhero_num,scale. = T)
+summary(pcs_norm)
+
+#4 Is the Total really the total? yes
+superhero<-superhero%>%
+          mutate(sum=rowSums(.[3:8]))%>%
+          mutate(dif=sum-Total)
+totaldif<-sum(superhero$dif)
+
+#5 
+total_super<-superhero[c(3,4,5,6,7,8,9)]
+pcs_total<-prcomp(total_super,scale. = T)
+summary(pcs_total)
+pcs_total$rotation
+
+#6
+library(ggplot2)
+biplot(pcs_norm,scale = 0)
+
+```
+
+
+
+## Q3 
+
+
+
+```{r Q3, echo = FALSE}
+
+library(ggplot2)
+df_no<-read.csv(file= 'df_no.csv')
+lowd<-read.csv(file= 'lowd.csv')
+lowd$cluster[lowd$cluster==1]<-2
+lowd$cluster[lowd$cluster==0]<-1
+ggplot(lowd,aes(X1,X2))+geom_point(color=lowd$cluster)+ 
+  theme(legend.position = "right")
+
+
+```
+
+# Q4
+
+
+![](/home/rstudio/q3.pdf)
+
+
+
+
+
+```{r Q4, eval=FALSE}
+
+import pandas as pd
+url='https://raw.githubusercontent.com/Vincent-Toups/bios611-project1/master/source_data/datasets_38396_60978_charcters_stats.csv'
+df=pd.read_csv(url,error_bad_lines=False)
+
+df_no=df.drop(["Name","Alignment","Total"],axis=1)
+df_no
+
+from sklearn.manifold import TSNE
+from sklearn.cluster import SpectralClustering
+from sklearn.metrics import pairwise_distances
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+
+mms = MinMaxScaler();
+
+normed = mms.fit_transform(df_no)
+distances = pairwise_distances(normed)
+adj = distances < 0.5
+
+sc = SpectralClustering(2,affinity="precomputed")
+df_no['cluster'] = sc.fit_predict(adj);
+
+tsne_em = TSNE(n_components=2, perplexity=30.0, n_iter=1000, verbose=1).fit_transform(df_no)
+
+lowd=pd.DataFrame(tsne_em,columns=["X1","X2"])
+lowd["cluster"]=df_no['cluster']
+from plotnine import *
+q3=ggplot(lowd,aes("X1","X2"))+geom_point(aes(color="cluster"))
+q3.save('/home/rstudio/q3.pdf')
+df_no.to_csv(r'/home/rstudio/df_no.csv' ,index=False)
+lowd.to_csv(r'/home/rstudio/lowd.csv' ,index=False)
+
+
+
+```
+
+
+
+```{r q5}
+
+library(caret)
+model_split <- function(dfi, train_p, validate_p, test_p, col_name="exp_group"){
+  dfi <- sample_n(dfi, nrow(dfi),replace=FALSE);
+  p <- (seq(nrow(dfi))-1)/nrow(dfi);
+  train_dfi <- dfi %>% filter(p < train_p);
+  validate_dfi <- dfi %>% filter(p < train_p + validate_p & p >= train_p);
+  test_dfi <- dfi %>% filter(p >= train_p + validate_p);
+  train_dfi[[col_name]] <- "train";
+  validate_dfi[[col_name]] <- "validate";
+  test_dfi[[col_name]] <- "test";
+  rbind(train_dfi, validate_dfi, test_dfi);
+}
+
+names(superhero)<-tolower(names(superhero))
+
+tidy_model <- rbind(model_split(superhero %>% filter(alignment=="good"), 1/3, 1/3, 1/3),
+                    model_split(superhero %>% filter(alignment=="bad"), 1/3, 1/3, 1/3));
+tidy_model %>% group_by(alignment, exp_group) %>% tally()
+
+train.data<-tidy_model%>%filter(exp_group=="train");
+validate.data <- tidy_model %>% filter(exp_group=="validate");
+test.data <- tidy_model %>% filter(exp_group=="test");
+
+set.seed(123)
+
+train.control<-trainControl(method = "repeatedcv",
+                            number=10,
+                            repeats = 10
+                  )
+
+
+train.data$alignment<-as.factor(train.data$alignment)
+
+gbm.fit<-train(alignment~ intelligence+strength+speed+durability+power+combat,
+               data = train.data,
+               method='gbm',
+               trControl = train.control,
+               verbose=FALSE
+)   
+
+pred_gbm <- predict(gbm.fit, newdata=test.data, type="raw")
+pred_gbm<-as.data.frame(pred_gbm)
+accuracy_gbm<-sum(pred_gbm == test.data$alignment)/nrow(test.data)
+accuracy_gbm
+
+```
+## Q6
+
+A conceptual question: why do we need to characterize our models using
+strategies like k-fold cross validation? Why can't we just report a
+single number for the accuracy of our model?
+
+No. Because it is possible that we have selected data that can't represent our data set. It can not predict the data which is known as overfiting. To prevent this happens and make sure we can repeat the result, we use cross validation to lower the bias. 
+
+## Q7
+
+Describe in words the process of recursive feature elimination. 
+
+First, after the initial set of feature training, the importance of each feature which is calculated by 
+the coefficient and feature importance attribute. Then, the least important feature will be eliminated and from the current model and result as a less featured model. The process in repeated until the feature is eliminated to the numbers we want. 
+
+
+
+
+
+
