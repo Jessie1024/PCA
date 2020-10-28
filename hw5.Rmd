@@ -2,11 +2,13 @@
 title: "hw5"
 author: "Qianhui Yang"
 date: "10/28/2020"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
 ```
 
 ## Q1
@@ -65,7 +67,7 @@ accuracy_gbm
 The normalization will make sure that each variable weight the same
 4. Yes, the "total" column really is the total as the values in the other columns
 5. If we include the total column in the PCA, the largest principle components PC1 has Total column correspond the largest proportion (0.52)
-6.
+6.PCA can't classify the alignment of superhero, PCA function on the linear correlation, indicate that in each group of alignment, there are little linear correlation between each other.May be because the fact that the alignment of superhero does not relate to their ability, it is randomly assigned by the writer.
 ```{r Q2, echo=FALSE}
 urlfile2<-'https://raw.githubusercontent.com/Vincent-Toups/bios611-project1/master/source_data/datasets_38396_60978_charcters_stats.csv'
 superhero<-read.csv(urlfile2)
@@ -91,30 +93,43 @@ totaldif<-sum(superhero$dif)
 
 #5 
 total_super<-superhero[c(3,4,5,6,7,8,9)]
-pcs_total<-prcomp(total_super,scale. = T)
+pcs_total<-prcomp(total_super,scale. = T, graph=FALSE)
 summary(pcs_total)
 pcs_total$rotation
 
 #6
-library(ggplot2)
-biplot(pcs_norm,scale = 0)
-
+library(factoextra)
+library(ggpubr)
+library(FactoMineR)
+super.pca<-PCA(superhero_num,scale.unit = TRUE,graph=FALSE)
+ind.p <- fviz_pca_ind(super.pca, geom = "point", col.ind = superhero$Alignment)
+ggpubr::ggpar(ind.p,
+              title = "Principal Component Analysis",
+              xlab = "PC1", ylab = "PC2",
+              ggtheme = theme_gray(), palette = "jco"
+              )
 ```
 
 
 
 ## Q3 
 
-
+Similar to PCA, TSNE did not do show a classification of superhero alignment. t-SNE (t-Distributed Stochastic Neighbor Embedding) is nonlinear dimensionality reduction technique in which interrelated high dimensional data (usually hundreds or thousands of variables) is mapped into low-dimensional data (like 2 or 3 variables) while preserving the significant structure (relationship among the data points in different variables) of original high dimensional data. The result shows no nonlinear correlation in the superhero alignment group. 
 
 ```{r Q3, echo = FALSE}
-
+library(stringr)
 library(ggplot2)
+names(superhero)<-tolower(names(superhero))
+superhero<-superhero%>%
+          filter(!superhero$power==0)
+
 df_no<-read.csv(file= 'df_no.csv')
 lowd<-read.csv(file= 'lowd.csv')
+lowd$cluster[lowd$cluster==2]<-3
 lowd$cluster[lowd$cluster==1]<-2
 lowd$cluster[lowd$cluster==0]<-1
-ggplot(lowd,aes(X1,X2))+geom_point(color=lowd$cluster)+ 
+
+ggplot(lowd,aes(X1,X2,color=superhero$alignment))+geom_point()
   theme(legend.position = "right")
 
 
@@ -122,10 +137,9 @@ ggplot(lowd,aes(X1,X2))+geom_point(color=lowd$cluster)+
 
 # Q4
 
+![](/home/rstudio/q4.pdf)
 
-![](/home/rstudio/q3.pdf)
-
-
+The python codes are hided in the report but can be found in the Rmarkdown code.
 
 
 
@@ -160,6 +174,10 @@ lowd["cluster"]=df_no['cluster']
 from plotnine import *
 q3=ggplot(lowd,aes("X1","X2"))+geom_point(aes(color="cluster"))
 q3.save('/home/rstudio/q3.pdf')
+
+q4=ggplot(lowd,aes("X1","X2"))+geom_point(aes(color=df_no['Alignment']))
+q4.save('/home/rstudio/q4.pdf')
+
 df_no.to_csv(r'/home/rstudio/df_no.csv' ,index=False)
 lowd.to_csv(r'/home/rstudio/lowd.csv' ,index=False)
 
@@ -168,7 +186,8 @@ lowd.to_csv(r'/home/rstudio/lowd.csv' ,index=False)
 ```
 
 
-
+#Q5
+The best accuracy is 0.71.
 ```{r q5}
 
 library(caret)
@@ -210,6 +229,8 @@ gbm.fit<-train(alignment~ intelligence+strength+speed+durability+power+combat,
                trControl = train.control,
                verbose=FALSE
 )   
+
+gbm.fit
 
 pred_gbm <- predict(gbm.fit, newdata=test.data, type="raw")
 pred_gbm<-as.data.frame(pred_gbm)
